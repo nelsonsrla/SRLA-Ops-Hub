@@ -1,0 +1,14 @@
+[build]
+  functions = "netlify/functions"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[functions."shopify-sync-scheduled"]
+  schedule = "0 14 * * 1-6"
+
+# Phase 1A.2: consignr-sync-scheduled (added when function is built)
+# [functions."consignr-sync-scheduled"]
+#   schedule = "30 14 * * 1-6"
