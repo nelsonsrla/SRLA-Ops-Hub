@@ -1,0 +1,42 @@
+# Netlify
+.netlify/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# Build artifacts
+dist/
+build/
+out/
+*.log
+
+# Environment + secrets
+.env
+.env.local
+.env.production
+*.env
+
+# Editor + OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+Thumbs.db
+
+# Temp files
+*.tmp
+*.temp
+.cache/
+
+# Backup files
+*.bak
+*.backup
+
+# Claude Code working files (if any)
+.claude/
