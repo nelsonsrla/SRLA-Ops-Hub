@@ -242,7 +242,13 @@ const LOG_FIELDS = [
   { key: "shp_orders_eligible", dept: "ship", role: "mgr", type: "count", label: "Orders Eligible Before 3pm", sub: "total orders that came in and were clearable before the 3pm cutoff \u2014 tap in Quick Count throughout day" },
   { key: "shp_green_packed", dept: "ship", role: "mgr", type: "yn", label: "Green Orders Packed by 3pm", sub: "all manually cleared before-3pm orders made cutoff" },
   { key: "shp_on_time", dept: "ship", role: "mgr", type: "yn", label: "All Orders Shipped On Time", sub: "check system \u2014 any missed carrier pickups?" },
-  { key: "shp_actually_shipped", dept: "ship", role: "mgr", type: "count", label: "Orders Actually Shipped", sub: "how many orders were packed and shipped today" },
+  { key: "shp_actually_shipped", dept: "ship", role: "mgr", type: "count", label: "Orders Actually Shipped", sub: "total packed & shipped today \u2014 auto-tallies from the carrier counts below (still editable)" },
+  // Per-carrier shipment counts. Optional breakdown fields: they roll into shp_actually_shipped
+  // (the KPI total) but are excluded from section completion gating so no carrier is "required".
+  { key: "shp_ship_ups", dept: "ship", role: "mgr", type: "count", label: "Shipped \u2014 UPS", sub: "UPS packages shipped \u2014 tap in Quick Count as they're picked up", optional: true },
+  { key: "shp_ship_fedex", dept: "ship", role: "mgr", type: "count", label: "Shipped \u2014 FedEx", sub: "FedEx packages shipped \u2014 tap in Quick Count as they're picked up", optional: true },
+  { key: "shp_ship_dhl", dept: "ship", role: "mgr", type: "count", label: "Shipped \u2014 DHL", sub: "DHL packages shipped \u2014 tap in Quick Count as they're picked up", optional: true },
+  { key: "shp_ship_other", dept: "ship", role: "mgr", type: "count", label: "Shipped \u2014 Other", sub: "USPS or any other carrier \u2014 tap in Quick Count as they're picked up", optional: true },
   { key: "shp_wrong_item", dept: "ship", role: "mgr", type: "count", label: "Wrong Item Shipped", sub: "count \u2014 note who packed" },
   { key: "shp_late", dept: "ship", role: "mgr", type: "count", label: "Late Shipments", sub: "count" },
   { key: "shp_label_err", dept: "ship", role: "mgr", type: "count", label: "Label / Address Errors", sub: "count" },
@@ -1451,22 +1457,27 @@ const DailyLogPage = ({ logData, onLogChange, submitted, onSubmit, roster, onRos
   const dayData = logData[selDate] || {};
   const update = (key, val) => {
     onLogChange(selDate, key, val);
-    // Auto-fill shp_actually_shipped when shp_on_time is set to Y and field is empty
-    // The eligible count comes from Shopify sync. If the answer is "Yes all shipped on time",
-    // then the count equals the eligible count from sync.
+    // Carrier breakdown → total. Editing a per-carrier count (UPS/FedEx/DHL/Other) mirrors the
+    // delta into shp_actually_shipped so carriers always roll up into the KPI total, and tags the
+    // total's provenance as "carrier" so the Daily Log shows it was driven by carrier counts.
+    // NOTE: we intentionally do NOT auto-fill the total from the Shopify order review anymore —
+    // per ops decision, the total only changes from manual entry or carrier counts until a future
+    // per-order shipping-method integration delegates fulfilled orders to the carrier totals.
     try {
-      if (key === "shp_on_time" && val === "Y") {
-        const cur = dayData.shp_actually_shipped;
-        const isEmpty = cur === undefined || cur === "" || cur === null;
-        if (isEmpty) {
-          // Use displayed/adjusted eligible count from sync if available
-          const eligible = parseInt(dayData.shp_orders_eligible);
-          if (!isNaN(eligible) && eligible > 0) {
-            onLogChange(selDate, "shp_actually_shipped", String(eligible));
-          }
+      if (key === "shp_ship_ups" || key === "shp_ship_fedex" || key === "shp_ship_dhl" || key === "shp_ship_other") {
+        const oldCarrier = parseInt(dayData[key]) || 0;
+        const newCarrier = parseInt(val) || 0;
+        const delta = newCarrier - oldCarrier;
+        if (delta !== 0) {
+          const curTotal = parseInt(dayData.shp_actually_shipped) || 0;
+          onLogChange(selDate, "shp_actually_shipped", String(Math.max(0, curTotal + delta)));
+          onLogChange(selDate, "shp_shipped_src", "carrier");
         }
+      } else if (key === "shp_actually_shipped") {
+        // Manager typed/stepped the total directly — mark it as a manual override.
+        onLogChange(selDate, "shp_shipped_src", "manual");
       }
-    } catch(e) { console.error("auto-fill shipped error:", e); }
+    } catch(e) { console.error("carrier→total mirror error:", e); }
     // Inverse cascade: when shp_late is set to 0, auto-flip shp_on_time to Y
     // (only if the day isn't a Sunday — Sunday doesn't track on_time)
     try {
@@ -1488,7 +1499,8 @@ const DailyLogPage = ({ logData, onLogChange, submitted, onSubmit, roster, onRos
     // Hide those two fields when the selected date is a Sunday.
     try {
       const isSunSel = new Date(selDate + "T12:00:00-08:00").getUTCDay() === 0;
-      if (isSunSel && (f.key === "shp_on_time" || f.key === "shp_actually_shipped")) return false;
+      const sundayHidden = ["shp_on_time", "shp_actually_shipped", "shp_ship_ups", "shp_ship_fedex", "shp_ship_dhl", "shp_ship_other"];
+      if (isSunSel && sundayHidden.includes(f.key)) return false;
     } catch(e) {}
     return true;
   });
@@ -1507,11 +1519,11 @@ const DailyLogPage = ({ logData, onLogChange, submitted, onSubmit, roster, onRos
     if (!isSundaySelected) return true;
     return !(x.key === "shp_on_time" || x.key === "shp_actually_shipped");
   };
-  const filled = (dept, role) => LOG_FIELDS.filter((x) => x.dept === dept && x.role === role && x.type !== "note").filter(sundayFieldFilter).filter((x) => {
+  const filled = (dept, role) => LOG_FIELDS.filter((x) => x.dept === dept && x.role === role && x.type !== "note" && !x.optional).filter(sundayFieldFilter).filter((x) => {
     const v = dayData[x.key];
     return v !== "" && v !== void 0;
   }).length;
-  const total = (dept, role) => LOG_FIELDS.filter((x) => x.dept === dept && x.role === role && x.type !== "note").filter(sundayFieldFilter).length;
+  const total = (dept, role) => LOG_FIELDS.filter((x) => x.dept === dept && x.role === role && x.type !== "note" && !x.optional).filter(sundayFieldFilter).length;
   const allFilled = (dept, role) => filled(dept, role) === total(dept, role);
   const handleSubmit = (dept, role) => {
     onSubmit(submitKey(dept, role));
@@ -1866,7 +1878,26 @@ const DailyLogPage = ({ logData, onLogChange, submitted, onSubmit, roster, onRos
         onSkuChange: function(storageId, entries) { writeSelDateSku(storageId, entries); },
         userProfile: userProfile
       }
-    ));
+    ), field.key === "shp_actually_shipped" && (function() {
+      // Live per-carrier breakdown + provenance under the shipped total.
+      var ups = parseInt(dayData.shp_ship_ups) || 0;
+      var fx = parseInt(dayData.shp_ship_fedex) || 0;
+      var dhl = parseInt(dayData.shp_ship_dhl) || 0;
+      var oth = parseInt(dayData.shp_ship_other) || 0;
+      var carrierSum = ups + fx + dhl + oth;
+      var tot = parseInt(dayData.shp_actually_shipped) || 0;
+      var src = dayData.shp_shipped_src;
+      var mismatch = carrierSum !== tot && (carrierSum > 0 || tot > 0);
+      var pill = function(txt, col) {
+        return React.createElement("span", { style: { fontSize: 10, fontFamily: "'JetBrains Mono',monospace", color: col, background: col + "18", border: "1px solid " + col + "44", padding: "2px 8px", borderRadius: 20, whiteSpace: "nowrap" } }, txt);
+      };
+      return React.createElement("div", { style: { marginTop: 10, display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 } },
+        React.createElement("span", { style: { fontSize: 11, color: C.muted, fontFamily: "'JetBrains Mono',monospace" } }, "📦 UPS " + ups + " · FedEx " + fx + " · DHL " + dhl + " · Other " + oth + "  (carrier sum " + carrierSum + ")"),
+        src === "carrier" && pill("↻ from Quick Counter", C.pos),
+        src === "manual" && pill("✎ manually edited", C.muted2),
+        mismatch && pill("⚠ total ≠ carrier sum", "#F59E0B")
+      );
+    })());
   })), activeDept !== "sched" && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 20 } }, isLocked ? (
     /* Past date — show Edit button */
     /* @__PURE__ */ React.createElement(
@@ -3720,7 +3751,13 @@ const QUICK_COUNTERS = [
   { id: "qc_orders_eligible", label: "Order Eligible Before 3pm", icon: "\uD83D\uDFE2", color: "#22C55E", logKey: "shp_orders_eligible", dept: "ship", sub: "tap each time an order comes in that can ship same day" },
   { id: "qc_wrong_pulled", label: "Wrong Item Shipped", icon: "\uD83D\uDCE6", color: "#EF4444", logKey: "shp_wrong_item", dept: "ship", sub: "wrong item pulled for order" },
   { id: "qc_late_ship", label: "Late Shipment", icon: "\uD83D\uDE9A", color: "#EF4444", logKey: "shp_late", dept: "ship", sub: "missed carrier pickup" },
-  { id: "qc_label_err", label: "Label / Address Error", icon: "\u2709\uFE0F", color: "#F59E0B", logKey: "shp_label_err", dept: "ship", sub: "wrong label or address" }
+  { id: "qc_label_err", label: "Label / Address Error", icon: "\u2709\uFE0F", color: "#F59E0B", logKey: "shp_label_err", dept: "ship", sub: "wrong label or address" },
+  // Per-carrier shipped counts. Each tap bumps its own carrier field (logKey) AND the shipped
+  // total (alsoBump) so the KPI total stays accurate as packages are dropped off / picked up.
+  { id: "qc_ship_ups", label: "Shipped \u2014 UPS", icon: "\uD83D\uDCE6", color: "#8B5E3C", logKey: "shp_ship_ups", dept: "ship", sub: "tap each UPS package as it ships", alsoBump: "shp_actually_shipped" },
+  { id: "qc_ship_fedex", label: "Shipped \u2014 FedEx", icon: "\uD83D\uDCE6", color: "#7C3AED", logKey: "shp_ship_fedex", dept: "ship", sub: "tap each FedEx package as it ships", alsoBump: "shp_actually_shipped" },
+  { id: "qc_ship_dhl", label: "Shipped \u2014 DHL", icon: "\uD83D\uDCE6", color: "#D4A017", logKey: "shp_ship_dhl", dept: "ship", sub: "tap each DHL package as it ships", alsoBump: "shp_actually_shipped" },
+  { id: "qc_ship_other", label: "Shipped \u2014 Other", icon: "\uD83D\uDCE6", color: "#64748B", logKey: "shp_ship_other", dept: "ship", sub: "USPS or any other carrier", alsoBump: "shp_actually_shipped" }
 ];
 const SKU_NOTE_KEYS = ["qc_recv_err", "qc_dup_skus", "qc_ghost", "qc_marked_sold"];
 const SkuNoteEntry = function(props) {
@@ -7066,12 +7103,18 @@ function App() {
   const handleIncrement = useCallback((counterId, logKey, todayKey, todayData, onLogChangeFn) => {
     setCounters((p) => {
       const newVal = (p[counterId] || 0) + 1;
+      const counter = QUICK_COUNTERS.find(function(c) { return c.id === counterId; });
       if (logKey) {
         const current = parseInt(todayData[logKey]) || 0;
         onLogChangeFn(todayKey, logKey, current + 1);
       }
+      // Carrier counters roll their tap into the shipped total + tag provenance.
+      if (counter && counter.alsoBump) {
+        const curTotal = parseInt(todayData[counter.alsoBump]) || 0;
+        onLogChangeFn(todayKey, counter.alsoBump, curTotal + 1);
+        onLogChangeFn(todayKey, "shp_shipped_src", "carrier");
+      }
       // Log activity
-      const counter = QUICK_COUNTERS.find(function(c) { return c.id === counterId; });
       if (counter && userProfile) {
         logActivity(userProfile, 'quick_count', counter.label + ' → ' + newVal);
       }
@@ -7089,9 +7132,16 @@ function App() {
   const handleDecrement = useCallback((counterId, logKey, todayKey, todayData, onLogChangeFn) => {
     setCounters((p) => {
       const newVal = Math.max(0, (p[counterId] || 0) - 1);
+      const counter = QUICK_COUNTERS.find(function(c) { return c.id === counterId; });
       if (logKey) {
         const current = parseInt(todayData[logKey]) || 0;
         onLogChangeFn(todayKey, logKey, Math.max(0, current - 1));
+      }
+      // Carrier counters also walk the shipped total back down (floored at 0) + tag provenance.
+      if (counter && counter.alsoBump) {
+        const curTotal = parseInt(todayData[counter.alsoBump]) || 0;
+        onLogChangeFn(todayKey, counter.alsoBump, Math.max(0, curTotal - 1));
+        onLogChangeFn(todayKey, "shp_shipped_src", "carrier");
       }
       return __spreadProps(__spreadValues({}, p), { [counterId]: newVal });
     });
