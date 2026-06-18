@@ -1541,7 +1541,7 @@ const DailyLogPage = ({ logData, onLogChange, submitted, onSubmit, roster, onRos
   // Sunday rule (May 2026):
   // - shp_actually_shipped and shp_on_time: SKIP Sunday days entirely from sums (no shipping happens)
   // - Y/N daily streaks: keep /7d display but Sunday auto-passes (counts as Y)
-  const SUNDAY_SKIP_KEYS = new Set(["shp_actually_shipped", "shp_on_time", "inv_pkgs_received"]);
+  const SUNDAY_SKIP_KEYS = new Set(["shp_actually_shipped", "shp_ship_ups", "shp_ship_fedex", "shp_ship_dhl", "shp_ship_other", "shp_on_time", "inv_pkgs_received"]);
   const SUNDAY_AUTOPASS_YN_KEYS = new Set(["inv_location_ok", "inv_eod_sort", "shp_green_packed", "shp_on_time"]);
   const isSundayDate = (d) => { try { return d.getDay() === 0; } catch(e) { return false; } };
   const wkSum = (key, isYn) => {
@@ -2059,6 +2059,10 @@ const DailyLogPage = ({ logData, onLogChange, submitted, onSubmit, roster, onRos
       { label: "Late Ships", val: wkSum("shp_late", false) || "\u2014", dept: "ship", highlight: false },
       { label: "Label Errors", val: wkSum("shp_label_err", false) || "\u2014", dept: "ship", highlight: false },
       { label: "Orders Shipped", val: wkSum("shp_actually_shipped", false) || "\u2014", dept: "ship", highlight: false },
+      { label: "UPS Shipped", val: wkSum("shp_ship_ups", false) || "\u2014", dept: "ship", highlight: false },
+      { label: "FedEx Shipped", val: wkSum("shp_ship_fedex", false) || "\u2014", dept: "ship", highlight: false },
+      { label: "DHL Shipped", val: wkSum("shp_ship_dhl", false) || "\u2014", dept: "ship", highlight: false },
+      { label: "Other Shipped", val: wkSum("shp_ship_other", false) || "\u2014", dept: "ship", highlight: false },
       {
         label: "Ship-Through Rate",
         val: (() => {
@@ -2330,7 +2334,11 @@ const WeekHistoryCard = function(props) {
           { label: "Green Missed",    val: sumF(dates, "shp_green_missed"),  dept: "ship" },
           { label: "Wrong Shipped",   val: sumF(dates, "shp_wrong_item"),    dept: "ship" },
           { label: "Late Ships",      val: sumF(dates, "shp_late"),          dept: "ship" },
-          { label: "Label Errors",    val: sumF(dates, "shp_label_err"),     dept: "ship" }
+          { label: "Label Errors",    val: sumF(dates, "shp_label_err"),     dept: "ship" },
+          { label: "UPS Shipped",     val: sumF(dates, "shp_ship_ups"),      dept: "ship" },
+          { label: "FedEx Shipped",   val: sumF(dates, "shp_ship_fedex"),    dept: "ship" },
+          { label: "DHL Shipped",     val: sumF(dates, "shp_ship_dhl"),      dept: "ship" },
+          { label: "Other Shipped",   val: sumF(dates, "shp_ship_other"),    dept: "ship" }
         ];
 
         return React.createElement("div", {
@@ -2803,6 +2811,10 @@ const WGM_OVERVIEW_FIELDS = [
   { domain: "inv", label: "EOD Sort",          key: "inv_eod_sort",      agg: "yn" },
   { domain: "ship", label: "Orders Eligible",  key: "shp_orders_eligible", agg: "sum" },
   { domain: "ship", label: "Orders Shipped",   key: "shp_actually_shipped", agg: "sum", pairKey: "shp_orders_eligible", pairLabel: "of Eligible", pairDir: "positive" },
+  { domain: "ship", label: "UPS Shipped",      key: "shp_ship_ups",      agg: "sum", pairKey: "shp_actually_shipped", pairLabel: "of Shipped", pairDir: "positive" },
+  { domain: "ship", label: "FedEx Shipped",    key: "shp_ship_fedex",    agg: "sum", pairKey: "shp_actually_shipped", pairLabel: "of Shipped", pairDir: "positive" },
+  { domain: "ship", label: "DHL Shipped",      key: "shp_ship_dhl",      agg: "sum", pairKey: "shp_actually_shipped", pairLabel: "of Shipped", pairDir: "positive" },
+  { domain: "ship", label: "Other Shipped",    key: "shp_ship_other",    agg: "sum", pairKey: "shp_actually_shipped", pairLabel: "of Shipped", pairDir: "positive" },
   { domain: "ship", label: "Green Orders",     key: "shp_green_packed",  agg: "yn" },
   { domain: "ship", label: "Green Missed",     key: "shp_green_missed",  agg: "sum", inverse: true, pairKey: "shp_orders_eligible", pairLabel: "of Eligible", pairDir: "negative" },
   { domain: "ship", label: "Late Ships",       key: "shp_late",          agg: "sum", inverse: true, pairKey: "shp_orders_eligible", pairLabel: "of Eligible", pairDir: "negative" },
@@ -2923,7 +2935,7 @@ const WGM_HEATMAP_METRICS = [
 ];
 
 // Sunday-skip keys for the modal/glance math (mirrors DailyLogPage's SUNDAY_SKIP_KEYS)
-const WGM_SUNDAY_SKIP_KEYS = new Set(["shp_actually_shipped", "shp_on_time", "inv_pkgs_received"]);
+const WGM_SUNDAY_SKIP_KEYS = new Set(["shp_actually_shipped", "shp_ship_ups", "shp_ship_fedex", "shp_ship_dhl", "shp_ship_other", "shp_on_time", "inv_pkgs_received"]);
 const WGM_SUNDAY_AUTOPASS_YN_KEYS = new Set(["inv_location_ok", "inv_eod_sort", "shp_green_packed", "shp_on_time"]);
 
 const wgmSumKey = function(logData, dates, key, closedDays) {
