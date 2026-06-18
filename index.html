@@ -5362,7 +5362,7 @@ const QuickCounterPanel = ({ counters, onIncrement, onDecrement, onLogChange, lo
     background: "".concat(C.gold, "18"),
     border: "1px solid ".concat(C.gold, "33")
   } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12 } }, "\uD83D\uDCC5"), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: C.gold, fontFamily: "'JetBrains Mono',monospace" } }, "Today \u2014 ", DAYS_F[today.getDay()], ", ", MONTHS[today.getMonth()], " ", today.getDate()))), ["inv", "ship"].map((dept) => {
-    const deptCounters = QUICK_COUNTERS.filter((c) => c.dept === dept);
+    const deptCounters = QUICK_COUNTERS.filter((c) => c.dept === dept && !c.alsoBump);
     const deptLabel = { inv: "\uD83D\uDCE6 Inventory", ship: "\uD83D\uDE9A Shipping", sales: "\uD83C\uDFF7\uFE0F Sales" }[dept];
     const deptColor = { inv: C.inv, ship: C.ship, sales: C.sales }[dept];
     return /* @__PURE__ */ React.createElement("div", { key: dept, style: { marginBottom: 24 } }, /* @__PURE__ */ React.createElement("div", { style: {
@@ -5374,7 +5374,35 @@ const QuickCounterPanel = ({ counters, onIncrement, onDecrement, onLogChange, lo
       borderRadius: 10,
       background: "".concat(deptColor, "18"),
       border: "1px solid ".concat(deptColor, "33")
-    } }, /* @__PURE__ */ React.createElement("span", { style: { fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: 13, color: deptColor } }, deptLabel), /* @__PURE__ */ React.createElement("span", { style: { fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: C.muted, marginLeft: "auto" } }, deptCounters.reduce((s, c) => s + (counters[c.id] || 0), 0), " incidents today")), /* @__PURE__ */ React.createElement("div", { className: "counter-grid" }, deptCounters.map((counter) => {
+    } }, /* @__PURE__ */ React.createElement("span", { style: { fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: 13, color: deptColor } }, deptLabel), /* @__PURE__ */ React.createElement("span", { style: { fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: C.muted, marginLeft: "auto" } }, deptCounters.reduce((s, c) => s + (counters[c.id] || 0), 0), " incidents today")), dept === "ship" && (function() {
+      // Grouped "Total Packages Shipped" card — holds the 4 carrier counters inline.
+      // Each row's +/- reuses the same handlers as standalone counters, so taps still bump
+      // the carrier field AND the shipped total (alsoBump) + provenance.
+      var carriers = QUICK_COUNTERS.filter(function(c) { return c.dept === "ship" && c.alsoBump; });
+      var totalShipped = carriers.reduce(function(s, c) { return s + (counters[c.id] || 0); }, 0);
+      return React.createElement("div", { className: "card-sm", style: { padding: "16px", marginBottom: 12, borderLeft: "3px solid " + (totalShipped > 0 ? C.ship : C.border) } },
+        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 4 } },
+          React.createElement("span", { style: { fontSize: 18 } }, "📦"),
+          React.createElement("span", { style: { fontWeight: 700, fontSize: 15, color: C.text } }, "Total Packages Shipped"),
+          React.createElement("span", { style: { marginLeft: "auto", fontFamily: "'JetBrains Mono',monospace", fontWeight: 700, fontSize: 20, color: totalShipped > 0 ? C.ship : C.muted } }, totalShipped)
+        ),
+        React.createElement("div", { style: { fontSize: 12, color: C.muted, marginBottom: 12 } }, "tap each carrier as packages are dropped off / picked up"),
+        React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8 } },
+          carriers.map(function(c) {
+            var cnt = counters[c.id] || 0;
+            return React.createElement("div", { key: c.id, style: { display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: "#080C14", borderRadius: 10, border: "1px solid " + (cnt > 0 ? c.color + "55" : C.border2) } },
+              React.createElement("span", { style: { fontSize: 16 } }, c.icon),
+              React.createElement("span", { style: { fontWeight: 600, fontSize: 14, color: C.text, flex: 1 } }, c.label.replace("Shipped — ", "")),
+              cnt > 0 && React.createElement("span", { style: { fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: c.color, background: c.color + "22", padding: "1px 8px", borderRadius: 20, border: "1px solid " + c.color + "44" } }, cnt),
+              React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, flexShrink: 0 } },
+                cnt > 0 && React.createElement("button", { onClick: function() { onDecrement(c.id, c.logKey, todayKey, todayData, onLogChange); }, style: { width: 36, height: 36, borderRadius: 10, background: "#0F1523", border: "1px solid " + C.border2, color: C.muted2, fontSize: 18, fontWeight: 300, cursor: "pointer" } }, "−"),
+                React.createElement("button", { onClick: function() { onIncrement(c.id, c.logKey, todayKey, todayData, onLogChange); }, style: { width: 46, height: 46, borderRadius: 12, border: "none", background: c.color, color: "#fff", fontSize: 22, fontWeight: 700, boxShadow: "0 4px 16px " + c.color + "44", cursor: "pointer" } }, "+")
+              )
+            );
+          })
+        )
+      );
+    })(), /* @__PURE__ */ React.createElement("div", { className: "counter-grid" }, deptCounters.map((counter) => {
       const count = counters[counter.id] || 0;
       return /* @__PURE__ */ React.createElement("div", { key: counter.id, className: "card-sm", style: {
         padding: "14px 16px",
