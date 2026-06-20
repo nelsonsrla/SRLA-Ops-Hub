@@ -243,12 +243,13 @@ const LOG_FIELDS = [
   { key: "shp_green_packed", dept: "ship", role: "mgr", type: "yn", label: "Green Orders Packed by 3pm", sub: "all manually cleared before-3pm orders made cutoff" },
   { key: "shp_on_time", dept: "ship", role: "mgr", type: "yn", label: "All Orders Shipped On Time", sub: "check system \u2014 any missed carrier pickups?" },
   { key: "shp_actually_shipped", dept: "ship", role: "mgr", type: "count", label: "Orders Actually Shipped", sub: "total packed & shipped today \u2014 auto-tallies from the carrier counts below (still editable)" },
-  // Per-carrier shipment counts. Optional breakdown fields: they roll into shp_actually_shipped
-  // (the KPI total) but are excluded from section completion gating so no carrier is "required".
-  { key: "shp_ship_ups", dept: "ship", role: "mgr", type: "count", label: "Shipped \u2014 UPS", sub: "UPS packages shipped \u2014 tap in Quick Count as they're picked up", optional: true },
-  { key: "shp_ship_fedex", dept: "ship", role: "mgr", type: "count", label: "Shipped \u2014 FedEx", sub: "FedEx packages shipped \u2014 tap in Quick Count as they're picked up", optional: true },
-  { key: "shp_ship_dhl", dept: "ship", role: "mgr", type: "count", label: "Shipped \u2014 DHL", sub: "DHL packages shipped \u2014 tap in Quick Count as they're picked up", optional: true },
-  { key: "shp_ship_other", dept: "ship", role: "mgr", type: "count", label: "Shipped \u2014 Other", sub: "USPS or any other carrier \u2014 tap in Quick Count as they're picked up", optional: true },
+  // Per-carrier shipment counts. Optional + nested: they roll into shp_actually_shipped (the KPI
+  // total), are excluded from section completion gating, and render INSIDE the "Orders Actually
+  // Shipped" card (nested:true) rather than as their own cards.
+  { key: "shp_ship_ups", dept: "ship", role: "mgr", type: "count", label: "UPS", sub: "UPS packages shipped", optional: true, nested: true, carrierColor: "#8B5E3C" },
+  { key: "shp_ship_fedex", dept: "ship", role: "mgr", type: "count", label: "FedEx", sub: "FedEx packages shipped", optional: true, nested: true, carrierColor: "#7C3AED" },
+  { key: "shp_ship_dhl", dept: "ship", role: "mgr", type: "count", label: "DHL", sub: "DHL packages shipped", optional: true, nested: true, carrierColor: "#D4A017" },
+  { key: "shp_ship_other", dept: "ship", role: "mgr", type: "count", label: "Other", sub: "USPS or any other carrier", optional: true, nested: true, carrierColor: "#64748B" },
   { key: "shp_wrong_item", dept: "ship", role: "mgr", type: "count", label: "Wrong Item Shipped", sub: "count \u2014 note who packed" },
   { key: "shp_late", dept: "ship", role: "mgr", type: "count", label: "Late Shipments", sub: "count" },
   { key: "shp_label_err", dept: "ship", role: "mgr", type: "count", label: "Label / Address Errors", sub: "count" },
@@ -1494,7 +1495,7 @@ const DailyLogPage = ({ logData, onLogChange, submitted, onSubmit, roster, onRos
       }
     } catch(e) { console.error("auto-flip on_time error:", e); }
   };
-  const fields = LOG_FIELDS.filter((f) => f.dept === activeDept && f.role === activeRole).filter((f) => {
+  const fields = LOG_FIELDS.filter((f) => f.dept === activeDept && f.role === activeRole && !f.nested).filter((f) => {
     // Sunday rule: nothing ships, so on_time and actually_shipped are irrelevant.
     // Hide those two fields when the selected date is a Sunday.
     try {
@@ -1879,23 +1880,35 @@ const DailyLogPage = ({ logData, onLogChange, submitted, onSubmit, roster, onRos
         userProfile: userProfile
       }
     ), field.key === "shp_actually_shipped" && (function() {
-      // Live per-carrier breakdown + provenance under the shipped total.
-      var ups = parseInt(dayData.shp_ship_ups) || 0;
-      var fx = parseInt(dayData.shp_ship_fedex) || 0;
-      var dhl = parseInt(dayData.shp_ship_dhl) || 0;
-      var oth = parseInt(dayData.shp_ship_other) || 0;
-      var carrierSum = ups + fx + dhl + oth;
+      // 4 carrier counters nested INSIDE the shipped-total card. Each CountStepper edits its carrier
+      // field via update(), which mirrors the change into shp_actually_shipped + tags provenance.
+      var carriers = LOG_FIELDS.filter(function(f) { return f.nested && f.dept === "ship"; });
+      var carrierSum = carriers.reduce(function(s, f) { return s + (parseInt(dayData[f.key]) || 0); }, 0);
       var tot = parseInt(dayData.shp_actually_shipped) || 0;
       var src = dayData.shp_shipped_src;
       var mismatch = carrierSum !== tot && (carrierSum > 0 || tot > 0);
       var pill = function(txt, col) {
         return React.createElement("span", { style: { fontSize: 10, fontFamily: "'JetBrains Mono',monospace", color: col, background: col + "18", border: "1px solid " + col + "44", padding: "2px 8px", borderRadius: 20, whiteSpace: "nowrap" } }, txt);
       };
-      return React.createElement("div", { style: { marginTop: 10, display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 } },
-        React.createElement("span", { style: { fontSize: 11, color: C.muted, fontFamily: "'JetBrains Mono',monospace" } }, "📦 UPS " + ups + " · FedEx " + fx + " · DHL " + dhl + " · Other " + oth + "  (carrier sum " + carrierSum + ")"),
-        src === "carrier" && pill("↻ from Quick Counter", C.pos),
-        src === "manual" && pill("✎ manually edited", C.muted2),
-        mismatch && pill("⚠ total ≠ carrier sum", "#F59E0B")
+      return React.createElement("div", { style: { marginTop: 12, borderTop: "1px solid " + C.border2, paddingTop: 12 } },
+        React.createElement("div", { style: { display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 10 } },
+          React.createElement("span", { style: { fontSize: 10, color: C.muted, fontFamily: "'JetBrains Mono',monospace", letterSpacing: 1, textTransform: "uppercase" } }, "By carrier"),
+          src === "carrier" && pill("↻ from Quick Counter", C.pos),
+          src === "manual" && pill("✎ manually edited", C.muted2),
+          mismatch && pill("⚠ total ≠ carrier sum " + carrierSum, "#F59E0B")
+        ),
+        React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8, pointerEvents: locked ? "none" : "auto", opacity: locked ? 0.72 : 1 } },
+          carriers.map(function(cf) {
+            var cVal = parseInt(dayData[cf.key]) || 0;
+            return React.createElement("div", { key: cf.key, style: { display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: "#080C14", borderRadius: 10, border: "1px solid " + (cVal > 0 ? (cf.carrierColor + "55") : C.border2) } },
+              React.createElement("span", { style: { fontSize: 15 } }, "📦"),
+              React.createElement("span", { style: { fontWeight: 600, fontSize: 13, color: C.text, width: 64, flexShrink: 0 } }, cf.label),
+              React.createElement("div", { style: { flex: 1, display: "flex", justifyContent: "flex-end" } },
+                React.createElement(CountStepper, { value: dayData[cf.key] === void 0 ? "" : dayData[cf.key], onChange: function(v) { update(cf.key, v); } })
+              )
+            );
+          })
+        )
       );
     })());
   })), activeDept !== "sched" && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 20 } }, isLocked ? (
