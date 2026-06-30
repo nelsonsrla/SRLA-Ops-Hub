@@ -148,6 +148,9 @@ See `README.md` for full path inventory.
 - After deploy, report Netlify build status
 - Update README.md when shipping new phases (especially the "Pending Work Queue" and "Build History" sections)
 
+## Project Commands
+- **"project device refresh"** — Nelson works across multiple devices, each pushing to GitHub. On this cue: `git fetch origin`; if the local branch is behind and the working tree is clean, `git pull --ff-only`, then summarize the new commits and what changed. If there are uncommitted local changes or the branch has diverged, STOP and flag it — never clobber local work.
+
 ---
 
 *This file should be the first thing read in any Claude Code session for this repo. Keep concise — full details in README.md.*
